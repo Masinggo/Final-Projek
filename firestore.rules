@@ -1,0 +1,76 @@
+rules_version = '2';
+
+// Aturan akses Firestore (PRD bagian 10). Tempel ke Firebase Console >
+// Firestore Database > Rules, lalu Publish.
+// Admin ditentukan oleh field users/{uid}.role == 'admin' (PRD keputusan 3).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function isAdmin() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // users: pengguna baca/ubah dokumen sendiri KECUALI role; admin baca semua.
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && request.resource.data.role == 'user';
+      allow update: if isOwner(uid)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.email == resource.data.email;
+      allow delete: if false;
+    }
+
+    // foods: semua pengguna masuk boleh baca; hanya admin tambah/ubah.
+    match /foods/{foodId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // logs: pengguna kelola miliknya sendiri; admin baca semua.
+    match /logs/{logId} {
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // submissions: pengguna tambah (status Menunggu) dan baca miliknya; ubah miliknya
+    // hanya saat "Perlu perbaikan" (kirim ulang jadi Menunggu); admin baca semua dan
+    // hanya boleh mengubah status, alasan, ditinjauOleh, ditinjauPada.
+    match /submissions/{subId} {
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'Menunggu';
+      allow update: if signedIn() && (
+        (resource.data.uid == request.auth.uid
+          && resource.data.status == 'Perlu perbaikan'
+          && request.resource.data.status == 'Menunggu'
+          && request.resource.data.uid == resource.data.uid)
+        ||
+        (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'alasan', 'ditinjauOleh', 'ditinjauPada']))
+      );
+      allow delete: if false;
+    }
+
+    // recognitions: catatan hasil pengenalan AI (tanpa foto). Pengguna tambah dan baca
+    // miliknya; admin baca semua. Tidak ada ubah/hapus.
+    match /recognitions/{recId} {
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
