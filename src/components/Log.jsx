@@ -152,7 +152,8 @@ function PhotoRecognizer({ app, onPick, goManual }) {
     } catch (err) {
       // KP-13.7: gagal -> arahkan ke pencarian manual, yang tetap tersedia penuh
       setState('error');
-      setError(`${err?.message || 'Pengenalan gagal.'} Gunakan pencarian manual.`);
+      const m = err?.message || 'Pengenalan gagal.';
+      setError(m.includes('pencarian manual') ? m : `${m} Gunakan pencarian manual.`);
     }
   }
 

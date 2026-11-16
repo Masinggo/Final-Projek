@@ -37,17 +37,22 @@ async function askGemini(prompt, mime, b64) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY belum diisi');
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }],
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    },
-  );
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const init = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }] }],
+      generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+    }),
+  };
+  // Layanan sedang sibuk (429/500/503) bersifat sementara: coba ulang maksimal 3 kali.
+  let r;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    r = await fetch(url, init);
+    if (r.ok || ![429, 500, 503].includes(r.status)) break;
+    await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+  }
   if (!r.ok) throw new Error(`Gemini ${r.status}`);
   const data = await r.json();
   return data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
@@ -110,6 +115,8 @@ export default async function handler(req, res) {
     return res.status(200).json({ kandidat });
   } catch (e) {
     console.error('recognize gagal:', e?.message);
-    return res.status(502).json({ error: 'Layanan pengenalan sedang tidak tersedia. Gunakan pencarian manual.' });
+    // Detail teknis hanya dikirim saat dijalankan lokal (bukan di Vercel), untuk memudahkan pencarian masalah.
+    const detail = process.env.VERCEL ? undefined : e?.message;
+    return res.status(502).json({ error: 'Layanan pengenalan sedang tidak tersedia. Gunakan pencarian manual.', detail });
   }
 }

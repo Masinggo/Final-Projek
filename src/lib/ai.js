@@ -73,7 +73,7 @@ export async function recognizeFood(file, foods) {
     const image = await downscaleToJpegDataUrl(file);
     const token = await db.getIdToken();
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 25_000);
+    const timer = setTimeout(() => ctrl.abort(), 50_000); // server boleh mencoba ulang saat Gemini sibuk
     try {
       const res = await fetch('/api/recognize', {
         method: 'POST',
@@ -82,8 +82,13 @@ export async function recognizeFood(file, foods) {
         signal: ctrl.signal,
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'Pengenalan gagal.');
+      if (!res.ok) throw new Error((data?.error || 'Pengenalan gagal.') + (data?.detail ? ` [${data.detail}]` : ''));
       raw = data.kandidat || [];
+    } catch (e) {
+      if (e?.name === 'AbortError' || /abort/i.test(e?.message || '')) {
+        throw new Error('Layanan AI terlalu lama menjawab (kemungkinan sedang sibuk). Coba lagi sebentar lagi. Gunakan pencarian manual.');
+      }
+      throw e;
     } finally {
       clearTimeout(timer);
     }
