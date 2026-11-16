@@ -50,7 +50,7 @@ async function askGemini(prompt, mime, b64) {
   let r;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      r = await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+      r = await fetch(url, { ...init, signal: AbortSignal.timeout(20_000) });
     } catch (e) {
       if (attempt === 1) throw new Error('Gemini terlalu lama menjawab (timeout)');
       continue;
