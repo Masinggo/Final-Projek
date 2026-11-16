@@ -46,12 +46,17 @@ async function askGemini(prompt, mime, b64) {
       generationConfig: { temperature: 0, responseMimeType: 'application/json' },
     }),
   };
-  // Layanan sedang sibuk (429/500/503) bersifat sementara: coba ulang maksimal 3 kali.
+  // Tiap panggilan dibatasi 15 detik dan dicoba maksimal 2 kali (total < 35 detik, di bawah batas fungsi 45 detik).
   let r;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    r = await fetch(url, init);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      r = await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+    } catch (e) {
+      if (attempt === 1) throw new Error('Gemini terlalu lama menjawab (timeout)');
+      continue;
+    }
     if (r.ok || ![429, 500, 503].includes(r.status)) break;
-    await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+    if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   if (!r.ok) throw new Error(`Gemini ${r.status}`);
   const data = await r.json();
